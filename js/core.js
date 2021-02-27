@@ -48,6 +48,11 @@ var Core = new function(){
 	var mouseIsDown = false;
 	var spaceIsDown = false;
 
+	// Input switching
+	const MOUSE = 'mouse';
+	const GAMEPAD = 'gamepad';
+	let inputMode = MOUSE;
+
 	// Game properties and scoring
 	var playing = false;
 	var score = 0;
@@ -70,6 +75,78 @@ var Core = new function(){
 	var fpsMax = 0;
 	var timeLastSecond = new Date().getTime();
 	var frames = 0;
+
+	// GAMEPAD START
+	var haveEvents = 'ongamepadconnected' in window;
+	var controllers = {};
+
+	function connecthandler(e) {
+		addgamepad(e.gamepad);
+	}
+
+	function addgamepad(gamepad) {
+		controllers[gamepad.index] = gamepad;
+		requestAnimationFrame(updateStatus);
+	}
+
+	function disconnecthandler(e) {
+		removegamepad(e.gamepad);
+	}
+
+	function removegamepad(gamepad) {
+		delete controllers[gamepad.index];
+	}
+
+	function updateStatus() {
+		if (!haveEvents) {
+			scangamepads();
+		}
+
+		var i = 0;
+		var j;
+
+		for (j in controllers) {
+			var controller = controllers[j];
+
+			let X_AXIS = 0;
+			let Y_AXIS = 0;
+			for (let i=0; i < controller.axes.length; i += 2) {
+				if (controller.axes[i] !== 0 || controller.axes[i+1] !== 0) {
+					X_AXIS = controller.axes[i];
+					Y_AXIS = controller.axes[i+1];
+				}
+			}
+			if (X_AXIS !== 0 && Y_AXIS !== 0) {
+				inputMode = GAMEPAD;
+				let THETA = Math.atan2(Y_AXIS, X_AXIS);
+				// let ANGLE = (THETA * (180/Math.PI) + 360 + 90) % 360;
+				player.angle = THETA;
+			}
+		}
+
+		requestAnimationFrame(updateStatus);
+	}
+
+	function scangamepads() {
+		var gamepads = navigator.getGamepads ? navigator.getGamepads() : (navigator.webkitGetGamepads ? navigator.webkitGetGamepads() : []);
+		for (var i = 0; i < gamepads.length; i++) {
+			if (gamepads[i]) {
+				if (gamepads[i].index in controllers) {
+					controllers[gamepads[i].index] = gamepads[i];
+				} else {
+					addgamepad(gamepads[i]);
+				}
+			}
+		}
+	}
+
+	window.addEventListener("gamepadconnected", connecthandler);
+	window.addEventListener("gamepaddisconnected", disconnecthandler);
+
+	if (!haveEvents) {
+		setInterval(scangamepads, 500);
+	}
+	// GAMEPAD END
 
 	this.init = function(){
 
@@ -97,6 +174,9 @@ var Core = new function(){
 			startButton.addEventListener('click', startButtonClickHandler, false);
 			document.addEventListener('keydown', documentKeyDownHandler, false);
 			document.addEventListener('keyup', documentKeyUpHandler, false);
+
+			// window.addEventListener('gamepadconnected', windowGamepadConnectedHandler, false);
+			// window.addEventListener('gamepaddisconnected', windowGamepadDisconnectedHandler, false);
 
 			// Define our player
 			player = new Player();
@@ -201,6 +281,7 @@ var Core = new function(){
 	 * Event handler for document.onmousemove.
 	 */
 	function documentMouseMoveHandler(event){
+		inputMode = MOUSE;
 		mouseX = event.clientX - (window.innerWidth - world.width) * 0.5 - BORDER_WIDTH;
 		mouseY = event.clientY - (window.innerHeight - world.height) * 0.5 - BORDER_WIDTH;
 	}
@@ -375,15 +456,13 @@ var Core = new function(){
 			// Increase the score count stats
 			fs += (0.4 * difficulty) * scoreFactor;
 
-			//player.angle = Math.atan2( mouseY - player.position.y, mouseX - player.position.x );
-
-			var targetAngle = Math.atan2( mouseY - player.position.y, mouseX - player.position.x );
-
-			if( Math.abs( targetAngle - player.angle ) > Math.PI ) {
-				player.angle = targetAngle;
+			if (inputMode === MOUSE) {
+				var targetAngle = Math.atan2( mouseY - player.position.y, mouseX - player.position.x );
+				if( Math.abs( targetAngle - player.angle ) > Math.PI ) {
+					player.angle = targetAngle;
+				}
+				player.angle += ( targetAngle - player.angle ) * 0.2;
 			}
-
-			player.angle += ( targetAngle - player.angle ) * 0.2;
 
 			player.energyRadiusTarget = ( player.energy / 100 ) * ( player.radius * 0.8 );
 			player.energyRadius += ( player.energyRadiusTarget - player.energyRadius ) * 0.2;
